@@ -1,0 +1,83 @@
+name: AutoDropKeyboard
+
+options:
+  bundleIdPrefix: com.autodrop
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_BITCODE: NO
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  AutoDropHost:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: AutoDropHost
+        excludes:
+          - "Info.plist"
+          - "*.entitlements"
+      - path: Shared
+    dependencies:
+      - target: AutoDropKeyboardExt
+        embed: true
+        link: false
+    settings:
+      base:
+        PRODUCT_NAME: AutoDropHost
+        PRODUCT_BUNDLE_IDENTIFIER: com.autodrop.keyboard
+        INFOPLIST_FILE: AutoDropHost/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AutoDropHost/AutoDropHost.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+
+  AutoDropKeyboardExt:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: AutoDropKeyboardExt
+        excludes:
+          - "Info.plist"
+          - "*.entitlements"
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: AutoDropKeyboardExt
+        PRODUCT_BUNDLE_IDENTIFIER: com.autodrop.keyboard.ext
+        INFOPLIST_FILE: AutoDropKeyboardExt/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AutoDropKeyboardExt/AutoDropKeyboardExt.entitlements
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+          - "@executable_path/../../Frameworks"
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+schemes:
+  AutoDropHost:
+    build:
+      targets:
+        AutoDropHost: all
+        AutoDropKeyboardExt: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
