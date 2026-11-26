@@ -49,7 +49,7 @@ final class InlineResizerOverlay: UIView {
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        return nil
     }
 
     private func setupUI() {
@@ -84,10 +84,11 @@ final class InlineResizerOverlay: UIView {
         resetButton.layer.cornerRadius = 7.0
         resetButton.layer.cornerCurve = .continuous
         resetButton.addTarget(self, action: #selector(handleReset), for: .touchUpInside)
-        NSLayoutConstraint.activate([
-            resetButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 52.0),
-            resetButton.heightAnchor.constraint(equalToConstant: 26.0)
-        ])
+        let resetWidth = resetButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 52.0)
+        resetWidth.priority = UILayoutPriority(998)
+        let resetHeight = resetButton.heightAnchor.constraint(equalToConstant: 26.0)
+        resetHeight.priority = UILayoutPriority(998)
+        NSLayoutConstraint.activate([resetWidth, resetHeight])
 
         doneButton.setTitle("Done", for: .normal)
         doneButton.titleLabel?.font = .systemFont(ofSize: 11.5, weight: .bold)
@@ -96,10 +97,11 @@ final class InlineResizerOverlay: UIView {
         doneButton.layer.cornerRadius = 7.0
         doneButton.layer.cornerCurve = .continuous
         doneButton.addTarget(self, action: #selector(handleDone), for: .touchUpInside)
-        NSLayoutConstraint.activate([
-            doneButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 54.0),
-            doneButton.heightAnchor.constraint(equalToConstant: 26.0)
-        ])
+        let doneWidth = doneButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 54.0)
+        doneWidth.priority = UILayoutPriority(998)
+        let doneHeight = doneButton.heightAnchor.constraint(equalToConstant: 26.0)
+        doneHeight.priority = UILayoutPriority(998)
+        NSLayoutConstraint.activate([doneWidth, doneHeight])
 
         let headerSpacer = UIView()
         headerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -114,6 +116,7 @@ final class InlineResizerOverlay: UIView {
         scrollView.showsVerticalScrollIndicator = true
         scrollView.indicatorStyle = .white
         scrollView.alwaysBounceVertical = true
+        scrollView.delaysContentTouches = false
 
         controlsStack.axis = .vertical
         controlsStack.alignment = .fill
@@ -250,16 +253,29 @@ final class InlineResizerOverlay: UIView {
         let desiredScrollHeight = scrollView.heightAnchor.constraint(equalToConstant: 146.0)
         desiredScrollHeight.priority = UILayoutPriority(750)
 
+        let headerHeight = headerStack.heightAnchor.constraint(equalToConstant: 28.0)
+        headerHeight.priority = UILayoutPriority(998)
+        let headerLeading = headerStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10.0)
+        headerLeading.priority = UILayoutPriority(998)
+        let headerTrailing = headerStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10.0)
+        headerTrailing.priority = UILayoutPriority(998)
+        let scrollLeading = scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10.0)
+        scrollLeading.priority = UILayoutPriority(998)
+        let scrollTrailing = scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10.0)
+        scrollTrailing.priority = UILayoutPriority(998)
+        let scrollBottom = scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8.0)
+        scrollBottom.priority = UILayoutPriority(998)
+
         NSLayoutConstraint.activate([
             headerStack.topAnchor.constraint(equalTo: topAnchor, constant: 8.0),
-            headerStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10.0),
-            headerStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10.0),
-            headerStack.heightAnchor.constraint(equalToConstant: 28.0),
+            headerLeading,
+            headerTrailing,
+            headerHeight,
 
             scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 6.0),
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10.0),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10.0),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8.0),
+            scrollLeading,
+            scrollTrailing,
+            scrollBottom,
             desiredScrollHeight,
 
             controlsStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
@@ -275,7 +291,9 @@ final class InlineResizerOverlay: UIView {
         label.text = text
         label.font = .systemFont(ofSize: 11.5, weight: .medium)
         label.textColor = AutoDropTheme.primaryText
-        label.widthAnchor.constraint(equalToConstant: 66.0).isActive = true
+        let widthConstraint = label.widthAnchor.constraint(equalToConstant: 66.0)
+        widthConstraint.priority = UILayoutPriority(998)
+        widthConstraint.isActive = true
         return label
     }
 
@@ -283,7 +301,9 @@ final class InlineResizerOverlay: UIView {
         label.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold)
         label.textColor = AutoDropTheme.accent
         label.textAlignment = .right
-        label.widthAnchor.constraint(equalToConstant: 44.0).isActive = true
+        let widthConstraint = label.widthAnchor.constraint(equalToConstant: 44.0)
+        widthConstraint.priority = UILayoutPriority(998)
+        widthConstraint.isActive = true
     }
 
     private func configureSlider(_ slider: UISlider, min: Float, max: Float) {
@@ -322,13 +342,14 @@ final class InlineResizerOverlay: UIView {
             button.setTitleColor(isSelected ? AutoDropTheme.primaryText : AutoDropTheme.secondaryText, for: .normal)
         }
 
+        let posix = Locale(identifier: "en_US_POSIX")
         let clampedNumDelay = AutoDropConfig.clamp(settings.numberDelaySeconds, to: AutoDropConfig.numberDelayRange)
         numberDelaySlider.value = Float(clampedNumDelay)
-        numberDelayValueLabel.text = String(format: "%.2fs", clampedNumDelay)
+        numberDelayValueLabel.text = String(format: "%.2fs", locale: posix, clampedNumDelay)
 
         let clampedWordDelay = AutoDropConfig.clamp(settings.wordDelaySeconds, to: AutoDropConfig.wordDelayRange)
         wordDelaySlider.value = Float(clampedWordDelay)
-        wordDelayValueLabel.text = String(format: "%.2fs", clampedWordDelay)
+        wordDelayValueLabel.text = String(format: "%.2fs", locale: posix, clampedWordDelay)
 
         let isPauseTrigger = (settings.wordTrigger == .onPause)
         onPauseButton.backgroundColor = isPauseTrigger ? AutoDropTheme.accent : AutoDropTheme.standardKey
@@ -364,13 +385,13 @@ final class InlineResizerOverlay: UIView {
 
     @objc private func handleNumberDelayChanged() {
         let stepped = (Double(numberDelaySlider.value) * 20.0).rounded() / 20.0
-        numberDelayValueLabel.text = String(format: "%.2fs", stepped)
+        numberDelayValueLabel.text = String(format: "%.2fs", locale: Locale(identifier: "en_US_POSIX"), stepped)
         onNumberDelayChanged?(stepped)
     }
 
     @objc private func handleWordDelayChanged() {
         let stepped = (Double(wordDelaySlider.value) * 20.0).rounded() / 20.0
-        wordDelayValueLabel.text = String(format: "%.2fs", stepped)
+        wordDelayValueLabel.text = String(format: "%.2fs", locale: Locale(identifier: "en_US_POSIX"), stepped)
         onWordDelayChanged?(stepped)
     }
 

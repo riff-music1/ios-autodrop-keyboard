@@ -73,6 +73,26 @@ public struct AutoDropSettingsSnapshot: Equatable {
     public var keyGapMode: KeyGapMode
     public var hapticsEnabled: Bool
 
+    public init(
+        mode: AutoDropMode,
+        numberDelaySeconds: Double,
+        wordDelaySeconds: Double,
+        wordTrigger: WordTriggerMode,
+        keyboardHeightPt: Double,
+        keyFontSize: Double,
+        keyGapMode: KeyGapMode,
+        hapticsEnabled: Bool
+    ) {
+        self.mode = mode
+        self.numberDelaySeconds = numberDelaySeconds
+        self.wordDelaySeconds = wordDelaySeconds
+        self.wordTrigger = wordTrigger
+        self.keyboardHeightPt = keyboardHeightPt
+        self.keyFontSize = keyFontSize
+        self.keyGapMode = keyGapMode
+        self.hapticsEnabled = hapticsEnabled
+    }
+
     public static let defaultValue = AutoDropSettingsSnapshot(
         mode: .off,
         numberDelaySeconds: 0.5,
@@ -178,11 +198,13 @@ public enum AutoDropConfig {
     }
 
     public static func formatDelayChip(_ seconds: Double) -> String {
-        let hundredths = Int((seconds * 100.0).rounded())
+        let safeSeconds = seconds.isFinite ? seconds : 0.5
+        let hundredths = Int((safeSeconds * 100.0).rounded())
+        let posix = Locale(identifier: "en_US_POSIX")
         if hundredths % 10 != 0 {
-            return String(format: "%.2fs", Double(hundredths) / 100.0)
+            return String(format: "%.2fs", locale: posix, Double(hundredths) / 100.0)
         }
-        return String(format: "%.1fs", Double(hundredths) / 100.0)
+        return String(format: "%.1fs", locale: posix, Double(hundredths) / 100.0)
     }
 
     public static func nextPreset(after current: Double, in presets: [Double]) -> Double {
@@ -194,6 +216,7 @@ public enum AutoDropConfig {
     }
 
     public static func clamp(_ value: Double, to range: ClosedRange<Double>) -> Double {
-        min(max(value, range.lowerBound), range.upperBound)
+        guard value.isFinite else { return range.lowerBound }
+        return min(max(value, range.lowerBound), range.upperBound)
     }
 }

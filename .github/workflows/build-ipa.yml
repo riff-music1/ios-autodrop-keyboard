@@ -20,23 +20,131 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Build iphonesimulator check
+        run: |
+          xcodebuild -project AutoDropKeyboard.xcodeproj \
+            -scheme AutoDropHost \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
       - name: Build unsigned archive
         run: |
           xcodebuild -project AutoDropKeyboard.xcodeproj \
             -scheme AutoDropHost \
             -configuration Release \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -archivePath build/AutoDropHost.xcarchive \
             archive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
+      - name: Verify built app, extension, Info.plist, and Mach-O binaries
+        run: |
+          set -euo pipefail
+
+          rm -rf build/AutoDropHost.app
+          cp -R build/AutoDropHost.xcarchive/Products/Applications/AutoDropHost.app build/AutoDropHost.app
+
+          HOST_BIN="build/AutoDropHost.app/AutoDropHost"
+          EXT_DIR="build/AutoDropHost.app/PlugIns/AutoDropKeyboardExt.appex"
+          EXT_BIN="$EXT_DIR/AutoDropKeyboardExt"
+          HOST_PLIST="build/AutoDropHost.app/Info.plist"
+          EXT_PLIST="$EXT_DIR/Info.plist"
+
+          # 1. Host executable check
+          test -f "$HOST_BIN"
+          HOST_FILE_INFO=$(file "$HOST_BIN")
+          echo "Host executable: $HOST_FILE_INFO"
+          echo "$HOST_FILE_INFO" | grep -q "Mach-O"
+          echo "$HOST_FILE_INFO" | grep -q "arm64"
+
+          # 2. Extension executable check
+          test -f "$EXT_BIN"
+          EXT_FILE_INFO=$(file "$EXT_BIN")
+          echo "Extension executable: $EXT_FILE_INFO"
+          echo "$EXT_FILE_INFO" | grep -q "Mach-O"
+          echo "$EXT_FILE_INFO" | grep -q "arm64"
+
+          # Verify KeyboardViewController ObjC runtime metadata is preserved in Release binary
+          otool -ov "$EXT_BIN" | grep -q "KeyboardViewController"
+
+          # 3. Inspect compiled Extension Info.plist with PlistBuddy
+          PKG_TYPE=$(/usr/libexec/PlistBuddy -c "Print :CFBundlePackageType" "$EXT_PLIST")
+          EXT_POINT=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$EXT_PLIST")
+          PRINCIPAL_CLASS=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPrincipalClass" "$EXT_PLIST")
+          DEV_REGION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleDevelopmentRegion" "$EXT_PLIST")
+          DISP_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$EXT_PLIST")
+          SHORT_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$EXT_PLIST")
+          BUNDLE_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$EXT_PLIST")
+          REQ_OPEN=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionAttributes:RequestsOpenAccess" "$EXT_PLIST")
+          ASCII_CAP=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionAttributes:IsASCIICapable" "$EXT_PLIST")
+          PRIMARY_LANG=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionAttributes:PrimaryLanguage" "$EXT_PLIST")
+
+          echo "Ext Info.plist -> PkgType=$PKG_TYPE Point=$EXT_POINT Principal=$PRINCIPAL_CLASS Region=$DEV_REGION Display=$DISP_NAME Ver=$SHORT_VER ($BUNDLE_VER)"
+          test "$PKG_TYPE" = "XPC!"
+          test "$EXT_POINT" = "com.apple.keyboard-service"
+          test "$PRINCIPAL_CLASS" = "AutoDropKeyboardExt.KeyboardViewController"
+          test "$DEV_REGION" = "en"
+          test "$DISP_NAME" = "AutoDrop"
+          test "$SHORT_VER" = "1.0"
+          test "$BUNDLE_VER" = "1"
+          test "$REQ_OPEN" = "true"
+          test "$ASCII_CAP" = "true"
+          test "$PRIMARY_LANG" = "en-US"
+
+          if /usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionMainStoryboard" "$EXT_PLIST" >/dev/null 2>&1; then
+            echo "ERROR: NSExtensionMainStoryboard must not exist in extension Info.plist"
+            exit 1
+          fi
+
+          # 4. Confirm Bundle ID hierarchy & Host Info.plist keys
+          HOST_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$HOST_PLIST")
+          EXT_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$EXT_PLIST")
+          HOST_PKG=$(/usr/libexec/PlistBuddy -c "Print :CFBundlePackageType" "$HOST_PLIST")
+          echo "Host ID=$HOST_ID ($HOST_PKG), Ext ID=$EXT_ID"
+          test "$HOST_ID" = "com.autodrop.keyboard"
+          test "$HOST_PKG" = "APPL"
+          case "$EXT_ID" in
+            "${HOST_ID}."*) ;;
+            *) echo "ERROR: Extension CFBundleIdentifier ($EXT_ID) does not begin with ${HOST_ID}."; exit 1 ;;
+          esac
+
+          /usr/libexec/PlistBuddy -c "Print :UILaunchScreen" "$HOST_PLIST" >/dev/null
+          INDIRECT_EVENTS=$(/usr/libexec/PlistBuddy -c "Print :UIApplicationSupportsIndirectInputEvents" "$HOST_PLIST")
+          test "$INDIRECT_EVENTS" = "true"
+
+          # 5. Confirm zero entitlements & no application-groups or embedded libswift dylibs
+          if find . -name "*.entitlements" | grep -q .; then
+            echo "ERROR: .entitlements file found in repository"
+            exit 1
+          fi
+          if find build/AutoDropHost.app \( -name "*.entitlements" -o -name "*.xcent" \) | grep -q .; then
+            echo "ERROR: entitlement files found in compiled bundle"
+            exit 1
+          fi
+          if grep -rn "application-groups" "$HOST_PLIST" "$EXT_PLIST" >/dev/null 2>&1; then
+            echo "ERROR: application-groups found in compiled plists"
+            exit 1
+          fi
+          if find build/AutoDropHost.app -name "libswift*.dylib" | grep -q .; then
+            echo "ERROR: unexpected libswift dylibs embedded"
+            exit 1
+          fi
+
+          echo "All verification checks passed."
+
       - name: Package IPA
         run: |
           rm -rf Payload AutoDropKeyboard.ipa
           mkdir -p Payload
-          cp -R build/AutoDropHost.xcarchive/Products/Applications/AutoDropHost.app Payload/
+          cp -R build/AutoDropHost.app Payload/
           zip -qry AutoDropKeyboard.ipa Payload
           rm -rf Payload
 

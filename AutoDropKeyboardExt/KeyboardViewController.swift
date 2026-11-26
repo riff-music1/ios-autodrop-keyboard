@@ -1,6 +1,7 @@
 import UIKit
 
-final class KeyboardViewController: UIInputViewController {
+@objc
+public final class KeyboardViewController: UIInputViewController {
     private var settings: AutoDropSettingsSnapshot = AutoDropConfig.load()
     private var shiftState: KeyboardShiftState = .lowercase
     private var lastShiftTapTime: TimeInterval = 0
@@ -12,58 +13,70 @@ final class KeyboardViewController: UIInputViewController {
     private var backspaceRepeatTimer: Timer?
     private var backspaceRepeatCount = 0
 
+    private let rootContainerView = UIView()
     private var heightConstraint: NSLayoutConstraint?
-    private let impactLight = UIImpactFeedbackGenerator(style: .light)
-    private let impactMedium = UIImpactFeedbackGenerator(style: .medium)
 
-    private var toolbarView: KeyboardToolbarView!
-    private var layoutContainer: KeyboardLayoutContainer!
-    private var resizerOverlay: InlineResizerOverlay!
+    private var impactLight: UIImpactFeedbackGenerator?
+    private var impactMedium: UIImpactFeedbackGenerator?
+
+    private let toolbarView = KeyboardToolbarView()
+    private let resizerOverlay = InlineResizerOverlay()
+    private var layoutContainer: KeyboardLayoutContainer?
 
     deinit {
         cancelAllTimers()
     }
 
-    override func viewDidLoad() {
+    public override func viewDidLoad() {
         super.viewDidLoad()
 
         view.backgroundColor = AutoDropTheme.background
-        if let keyboardInputView = inputView {
-            keyboardInputView.backgroundColor = AutoDropTheme.background
-            keyboardInputView.allowsSelfSizing = true
-        }
+        inputView?.allowsSelfSizing = true
 
+        setupRootContainer()
         setupViews()
         setupHeightConstraint()
-        applyLoadedSettings(syncPageForMode: true)
+        applyLoadedSettings(syncPageForMode: true, layoutNow: false)
     }
 
-    override func viewWillAppear(_ animated: Bool) {
+    public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        reloadSettingsFromDisk()
-        layoutContainer.updateGlobeVisibility(needsInputModeSwitchKey)
-        updateKeyboardHeight()
+        reloadSettingsFromDisk(layoutNow: false)
+        layoutContainer?.updateGlobeVisibility(needsInputModeSwitchKey)
+        updateKeyboardHeight(layoutNow: false)
     }
 
-    override func viewWillDisappear(_ animated: Bool) {
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        layoutContainer?.updateGlobeVisibility(needsInputModeSwitchKey)
+        updateKeyboardHeight(layoutNow: true)
+    }
+
+    public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         cancelAllTimers()
     }
 
-    override func viewDidLayoutSubviews() {
+    public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        layoutContainer.updateGlobeVisibility(needsInputModeSwitchKey)
-        updateKeyboardHeight(layoutNow: false)
+        layoutContainer?.updateGlobeVisibility(needsInputModeSwitchKey)
     }
 
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    public override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.updateKeyboardHeight(layoutNow: true)
+        })
+    }
+
+    public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         updateKeyboardHeight(layoutNow: false)
     }
 
-    override func textDidChange(_ textInput: UITextInput?) {
+    public override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
-        layoutContainer.updateGlobeVisibility(needsInputModeSwitchKey)
+        layoutContainer?.updateGlobeVisibility(needsInputModeSwitchKey)
         if textDocumentProxy.documentContextBeforeInput != nil && !hasNonEmptyLineBeforeCursor() {
             hasPendingWordChars = false
             cancelDebounceTimer()
@@ -72,8 +85,20 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Setup
 
+    private func setupRootContainer() {
+        rootContainerView.translatesAutoresizingMaskIntoConstraints = false
+        rootContainerView.backgroundColor = AutoDropTheme.background
+        view.addSubview(rootContainerView)
+
+        NSLayoutConstraint.activate([
+            rootContainerView.topAnchor.constraint(equalTo: view.topAnchor),
+            rootContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            rootContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            rootContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+
     private func setupViews() {
-        toolbarView = KeyboardToolbarView()
         toolbarView.onSelectMode = { [weak self] mode in
             self?.selectMode(mode)
         }
@@ -84,15 +109,15 @@ final class KeyboardViewController: UIInputViewController {
             self?.toggleResizerOverlay()
         }
 
-        layoutContainer = KeyboardLayoutContainer(
+        let container = KeyboardLayoutContainer(
             fontSize: CGFloat(settings.keyFontSize),
             gap: CGFloat(settings.keyGapMode.spacing),
             needsGlobe: needsInputModeSwitchKey
         ) { [weak self] button in
             self?.wireKeyButton(button)
         }
+        layoutContainer = container
 
-        resizerOverlay = InlineResizerOverlay()
         resizerOverlay.isHidden = true
         resizerOverlay.alpha = 0.0
         resizerOverlay.onModeChanged = { [weak self] mode in
@@ -121,20 +146,25 @@ final class KeyboardViewController: UIInputViewController {
         resizerOverlay.onHeightPtChanged = { [weak self] heightPt in
             guard let self = self else { return }
             self.settings.keyboardHeightPt = AutoDropConfig.clamp(heightPt, to: AutoDropConfig.heightPtRange)
-            self.updateKeyboardHeight()
+            self.updateKeyboardHeight(layoutNow: true)
             AutoDropConfig.save(self.settings)
         }
         resizerOverlay.onFontSizeChanged = { [weak self] fontSize in
             guard let self = self else { return }
-            self.settings.keyFontSize = AutoDropConfig.clamp(fontSize, to: AutoDropConfig.fontSizeRange)
-            self.layoutContainer.updateFontSize(CGFloat(self.settings.keyFontSize), shiftState: self.shiftState)
+            let clamped = AutoDropConfig.clamp(fontSize, to: AutoDropConfig.fontSizeRange)
+            let previousPt = Int(self.settings.keyFontSize.rounded())
+            let nextPt = Int(clamped.rounded())
+            self.settings.keyFontSize = Double(nextPt)
+            if previousPt != nextPt {
+                self.layoutContainer?.updateFontSize(CGFloat(nextPt), shiftState: self.shiftState)
+            }
             AutoDropConfig.save(self.settings)
         }
         resizerOverlay.onGapModeChanged = { [weak self] gapMode in
             guard let self = self else { return }
             self.playHaptic(.light)
             self.settings.keyGapMode = gapMode
-            self.layoutContainer.updateGap(CGFloat(gapMode.spacing))
+            self.layoutContainer?.updateGap(CGFloat(gapMode.spacing))
             self.resizerOverlay.update(with: self.settings)
             AutoDropConfig.save(self.settings)
         }
@@ -153,26 +183,30 @@ final class KeyboardViewController: UIInputViewController {
             self?.setResizerOverlayVisible(false)
         }
 
-        view.addSubview(toolbarView)
-        view.addSubview(layoutContainer.rootView)
-        view.addSubview(resizerOverlay)
+        rootContainerView.addSubview(toolbarView)
+        rootContainerView.addSubview(container.rootView)
+        rootContainerView.addSubview(resizerOverlay)
 
-        let safeGuide = view.safeAreaLayoutGuide
+        let safeGuide = rootContainerView.safeAreaLayoutGuide
 
-        let overlayBottomLimit = resizerOverlay.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -4.0)
-        overlayBottomLimit.priority = .required
+        let gridTop = container.rootView.topAnchor.constraint(equalTo: toolbarView.bottomAnchor, constant: 6.0)
+        gridTop.priority = UILayoutPriority(998)
+        let gridBottom = container.rootView.bottomAnchor.constraint(equalTo: rootContainerView.bottomAnchor, constant: -4.0)
+        gridBottom.priority = UILayoutPriority(998)
+        let overlayBottomLimit = resizerOverlay.bottomAnchor.constraint(lessThanOrEqualTo: rootContainerView.bottomAnchor, constant: -4.0)
+        overlayBottomLimit.priority = UILayoutPriority(998)
 
         NSLayoutConstraint.activate([
-            toolbarView.topAnchor.constraint(equalTo: view.topAnchor),
-            toolbarView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            toolbarView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            toolbarView.topAnchor.constraint(equalTo: rootContainerView.topAnchor),
+            toolbarView.leadingAnchor.constraint(equalTo: rootContainerView.leadingAnchor),
+            toolbarView.trailingAnchor.constraint(equalTo: rootContainerView.trailingAnchor),
 
-            layoutContainer.rootView.topAnchor.constraint(equalTo: toolbarView.bottomAnchor, constant: 6.0),
-            layoutContainer.rootView.leadingAnchor.constraint(equalTo: safeGuide.leadingAnchor, constant: 4.0),
-            layoutContainer.rootView.trailingAnchor.constraint(equalTo: safeGuide.trailingAnchor, constant: -4.0),
-            layoutContainer.rootView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4.0),
+            gridTop,
+            container.rootView.leadingAnchor.constraint(equalTo: safeGuide.leadingAnchor, constant: 4.0),
+            container.rootView.trailingAnchor.constraint(equalTo: safeGuide.trailingAnchor, constant: -4.0),
+            gridBottom,
 
-            resizerOverlay.topAnchor.constraint(equalTo: view.topAnchor, constant: 4.0),
+            resizerOverlay.topAnchor.constraint(equalTo: rootContainerView.topAnchor, constant: 4.0),
             resizerOverlay.leadingAnchor.constraint(equalTo: safeGuide.leadingAnchor, constant: 4.0),
             resizerOverlay.trailingAnchor.constraint(equalTo: safeGuide.trailingAnchor, constant: -4.0),
             overlayBottomLimit
@@ -180,7 +214,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func setupHeightConstraint() {
-        let constraint = view.heightAnchor.constraint(equalToConstant: targetKeyboardHeight())
+        let constraint = rootContainerView.heightAnchor.constraint(equalToConstant: targetKeyboardHeight())
         constraint.priority = UILayoutPriority(999)
         constraint.isActive = true
         heightConstraint = constraint
@@ -189,9 +223,10 @@ final class KeyboardViewController: UIInputViewController {
     private func targetKeyboardHeight() -> CGFloat {
         let portraitPt = CGFloat(AutoDropConfig.clamp(settings.keyboardHeightPt, to: AutoDropConfig.heightPtRange))
         if isLandscapeOrientation() {
-            let screenHeight = UIScreen.main.bounds.height
+            let screenHeight = view.window?.windowScene?.screen.bounds.height ?? 390.0
             let scaled = (portraitPt * 0.68).rounded()
-            return min(max(120.0, scaled), max(160.0, screenHeight * 0.56))
+            let maxLandscape = max(160.0, (screenHeight * 0.56).rounded())
+            return min(max(150.0, scaled), maxLandscape)
         }
         return portraitPt.rounded()
     }
@@ -203,15 +238,20 @@ final class KeyboardViewController: UIInputViewController {
         if let orientation = view.window?.windowScene?.interfaceOrientation {
             return orientation.isLandscape
         }
-        let screenSize = UIScreen.main.bounds.size
-        return screenSize.width > screenSize.height
+        if let screenBounds = view.window?.windowScene?.screen.bounds {
+            return screenBounds.width > screenBounds.height
+        }
+        if view.bounds.width > 0 && view.bounds.height > 0 {
+            return view.bounds.width > view.bounds.height * 1.6
+        }
+        return false
     }
 
-    private func updateKeyboardHeight(layoutNow: Bool = true) {
+    private func updateKeyboardHeight(layoutNow: Bool) {
         let newHeight = targetKeyboardHeight()
         if let constraint = heightConstraint, abs(constraint.constant - newHeight) > 0.5 {
             constraint.constant = newHeight
-            if layoutNow {
+            if layoutNow && view.window != nil && view.bounds.width > 0 && view.bounds.height > 0 {
                 view.layoutIfNeeded()
             }
         }
@@ -219,25 +259,25 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Settings Sync
 
-    private func reloadSettingsFromDisk() {
+    private func reloadSettingsFromDisk(layoutNow: Bool) {
         let loaded = AutoDropConfig.load()
         let modeChanged = (loaded.mode != settings.mode)
         settings = loaded
-        applyLoadedSettings(syncPageForMode: modeChanged)
+        applyLoadedSettings(syncPageForMode: modeChanged, layoutNow: layoutNow)
     }
 
-    private func applyLoadedSettings(syncPageForMode: Bool) {
+    private func applyLoadedSettings(syncPageForMode: Bool, layoutNow: Bool) {
         toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
         resizerOverlay.update(with: settings)
-        layoutContainer.updateFontSize(CGFloat(settings.keyFontSize), shiftState: shiftState)
-        layoutContainer.updateGap(CGFloat(settings.keyGapMode.spacing))
-        updateKeyboardHeight()
+        layoutContainer?.updateFontSize(CGFloat(settings.keyFontSize), shiftState: shiftState)
+        layoutContainer?.updateGap(CGFloat(settings.keyGapMode.spacing))
+        updateKeyboardHeight(layoutNow: layoutNow)
 
         if syncPageForMode {
             if settings.mode == .number123 {
-                layoutContainer.showPage(.numpad)
+                layoutContainer?.showPage(.numpad)
             } else {
-                layoutContainer.showPage(.qwerty)
+                layoutContainer?.showPage(.qwerty)
             }
         }
     }
@@ -247,7 +287,7 @@ final class KeyboardViewController: UIInputViewController {
     private func wireKeyButton(_ button: KeyButton) {
         switch button.action {
         case .globe:
-            button.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
+            button.addTarget(self, action: #selector(handleGlobeTouch(_:forEvent:)), for: .allTouchEvents)
             button.addTarget(self, action: #selector(handleTouchDownHaptic(_:)), for: .touchDown)
         case .backspace:
             button.addTarget(self, action: #selector(handleBackspaceTouchDown(_:)), for: .touchDown)
@@ -259,6 +299,14 @@ final class KeyboardViewController: UIInputViewController {
         default:
             button.addTarget(self, action: #selector(handleTouchDownHaptic(_:)), for: .touchDown)
             button.addTarget(self, action: #selector(handleKeyTouchUpInside(_:)), for: .touchUpInside)
+        }
+    }
+
+    @objc private func handleGlobeTouch(_ sender: UIView, forEvent event: UIEvent?) {
+        if let event = event {
+            handleInputModeList(from: sender, with: event)
+        } else {
+            advanceToNextInputMode()
         }
     }
 
@@ -274,9 +322,9 @@ final class KeyboardViewController: UIInputViewController {
 
         switch mode {
         case .number123:
-            layoutContainer.showPage(.numpad)
+            layoutContainer?.showPage(.numpad)
         case .off, .abc, .word:
-            layoutContainer.showPage(.qwerty)
+            layoutContainer?.showPage(.qwerty)
         }
 
         toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
@@ -316,24 +364,32 @@ final class KeyboardViewController: UIInputViewController {
     private func setResizerOverlayVisible(_ visible: Bool) {
         isResizerOpen = visible
         toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
+        resizerOverlay.layer.removeAllAnimations()
 
         if visible {
             resizerOverlay.update(with: settings)
             resizerOverlay.isHidden = false
             resizerOverlay.transform = CGAffineTransform(translationX: 0, y: -6.0)
-            UIView.animate(withDuration: 0.16, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
-                self.resizerOverlay.alpha = 1.0
-                self.resizerOverlay.transform = .identity
+            UIView.animate(
+                withDuration: 0.16,
+                delay: 0,
+                options: [.curveEaseOut, .allowUserInteraction, .beginFromCurrentState]
+            ) { [weak self] in
+                self?.resizerOverlay.alpha = 1.0
+                self?.resizerOverlay.transform = .identity
             }
         } else {
-            UIView.animate(withDuration: 0.14, delay: 0, options: [.curveEaseIn, .allowUserInteraction]) {
-                self.resizerOverlay.alpha = 0.0
-                self.resizerOverlay.transform = CGAffineTransform(translationX: 0, y: -6.0)
-            } completion: { _ in
-                if !self.isResizerOpen {
-                    self.resizerOverlay.isHidden = true
-                    self.resizerOverlay.transform = .identity
-                }
+            UIView.animate(
+                withDuration: 0.14,
+                delay: 0,
+                options: [.curveEaseIn, .allowUserInteraction, .beginFromCurrentState]
+            ) { [weak self] in
+                self?.resizerOverlay.alpha = 0.0
+                self?.resizerOverlay.transform = CGAffineTransform(translationX: 0, y: -6.0)
+            } completion: { [weak self] _ in
+                guard let self = self, !self.isResizerOpen else { return }
+                self.resizerOverlay.isHidden = true
+                self.resizerOverlay.transform = .identity
             }
         }
     }
@@ -353,9 +409,9 @@ final class KeyboardViewController: UIInputViewController {
 
         toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
         resizerOverlay.update(with: settings)
-        layoutContainer.updateFontSize(CGFloat(settings.keyFontSize), shiftState: shiftState)
-        layoutContainer.updateGap(CGFloat(settings.keyGapMode.spacing))
-        updateKeyboardHeight()
+        layoutContainer?.updateFontSize(CGFloat(settings.keyFontSize), shiftState: shiftState)
+        layoutContainer?.updateGap(CGFloat(settings.keyGapMode.spacing))
+        updateKeyboardHeight(layoutNow: true)
     }
 
     // MARK: - Key Input Handling
@@ -380,9 +436,9 @@ final class KeyboardViewController: UIInputViewController {
         case .dropReturn:
             handleDropReturnTap()
         case .switchToSymbols:
-            layoutContainer.showPage(.symbols)
+            layoutContainer?.showPage(.symbols)
         case .switchToSecondarySymbols:
-            layoutContainer.showPage(.secondarySymbols)
+            layoutContainer?.showPage(.secondarySymbols)
         case .switchToLetters:
             handleSwitchToLetters()
         case .backspace, .globe:
@@ -393,9 +449,9 @@ final class KeyboardViewController: UIInputViewController {
     private func handleCharacterInput(_ char: String) {
         textDocumentProxy.insertText(char)
 
-        if shiftState == .uppercase && layoutContainer.currentPage == .qwerty {
+        if shiftState == .uppercase && layoutContainer?.currentPage == .qwerty {
             shiftState = .lowercase
-            layoutContainer.updateShiftState(.lowercase, fontSize: CGFloat(settings.keyFontSize))
+            layoutContainer?.updateShiftState(.lowercase, fontSize: CGFloat(settings.keyFontSize))
         }
 
         switch settings.mode {
@@ -432,7 +488,7 @@ final class KeyboardViewController: UIInputViewController {
             shiftState = .lowercase
         }
         lastShiftTapTime = now
-        layoutContainer.updateShiftState(shiftState, fontSize: CGFloat(settings.keyFontSize))
+        layoutContainer?.updateShiftState(shiftState, fontSize: CGFloat(settings.keyFontSize))
     }
 
     private func handleSpaceTap() {
@@ -473,7 +529,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func handleSwitchToLetters() {
-        if settings.mode == .number123 && layoutContainer.currentPage == .numpad {
+        if settings.mode == .number123 && layoutContainer?.currentPage == .numpad {
             cancelDebounceTimer()
             hasPendingWordChars = false
             settings.mode = .off
@@ -481,7 +537,7 @@ final class KeyboardViewController: UIInputViewController {
             toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
             resizerOverlay.update(with: settings)
         }
-        layoutContainer.showPage(.qwerty)
+        layoutContainer?.showPage(.qwerty)
     }
 
     // MARK: - Backspace & Hold-to-Delete
@@ -520,7 +576,7 @@ final class KeyboardViewController: UIInputViewController {
     private func performBackspaceStep() {
         textDocumentProxy.deleteBackward()
 
-        if !hasNonEmptyLineBeforeCursor() {
+        if textDocumentProxy.documentContextBeforeInput != nil && !hasNonEmptyLineBeforeCursor() {
             hasPendingWordChars = false
             cancelDebounceTimer()
         } else if debounceTimer != nil {
@@ -595,14 +651,18 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func playHaptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        guard settings.hapticsEnabled else { return }
+        guard settings.hapticsEnabled, hasFullAccess else { return }
         switch style {
         case .medium:
-            impactMedium.prepare()
-            impactMedium.impactOccurred()
+            let generator = impactMedium ?? UIImpactFeedbackGenerator(style: .medium)
+            impactMedium = generator
+            generator.prepare()
+            generator.impactOccurred()
         default:
-            impactLight.prepare()
-            impactLight.impactOccurred()
+            let generator = impactLight ?? UIImpactFeedbackGenerator(style: .light)
+            impactLight = generator
+            generator.prepare()
+            generator.impactOccurred()
         }
     }
 }

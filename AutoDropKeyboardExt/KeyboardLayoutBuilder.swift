@@ -21,6 +21,7 @@ final class KeyboardLayoutContainer {
     private var letterButtons: [KeyButton] = []
     private var shiftButtons: [KeyButton] = []
     private var globeEntries: [(button: KeyButton, widthConstraint: NSLayoutConstraint)] = []
+    private var lastGlobeVisibility: Bool?
 
     private(set) var currentPage: KeyboardPage = .qwerty
 
@@ -107,6 +108,8 @@ final class KeyboardLayoutContainer {
     }
 
     func updateGlobeVisibility(_ visible: Bool) {
+        guard lastGlobeVisibility != visible else { return }
+        lastGlobeVisibility = visible
         for entry in globeEntries {
             entry.button.isHidden = !visible
             entry.widthConstraint.isActive = visible
@@ -156,10 +159,12 @@ final class KeyboardLayoutContainer {
         row2Outer.addArrangedSubview(row2Inner)
         row2Outer.addArrangedSubview(trailingSpacer)
 
+        let spacerMatch = leadingSpacer.widthAnchor.constraint(equalTo: trailingSpacer.widthAnchor)
+        spacerMatch.priority = UILayoutPriority(998)
         let row2WidthMatch = row2Buttons[0].widthAnchor.constraint(equalTo: referenceKey.widthAnchor)
         row2WidthMatch.priority = UILayoutPriority(998)
         NSLayoutConstraint.activate([
-            leadingSpacer.widthAnchor.constraint(equalTo: trailingSpacer.widthAnchor),
+            spacerMatch,
             row2WidthMatch
         ])
 

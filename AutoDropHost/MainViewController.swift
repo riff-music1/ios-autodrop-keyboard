@@ -52,8 +52,8 @@ final class MainViewController: UIViewController, UITextViewDelegate {
         let safe = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: safe.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: safe.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 12.0),
@@ -125,8 +125,8 @@ final class MainViewController: UIViewController, UITextViewDelegate {
 
         let steps = [
             "Open Settings > General > Keyboard > Keyboards",
-            "Tap Add New Keyboard and select AutoDrop Keyboard",
-            "Tap AutoDrop Keyboard and enable Allow Full Access",
+            "Tap Add New Keyboard and select AutoDrop",
+            "Tap AutoDrop and enable Allow Full Access",
             "Switch keyboards anytime using the Globe key"
         ]
         for (index, text) in steps.enumerated() {
@@ -165,10 +165,11 @@ final class MainViewController: UIViewController, UITextViewDelegate {
         dropBadgeLabel.textColor = accentColor
         dropBadgeLabel.textAlignment = .center
         dropBadgeLabel.backgroundColor = accentColor.withAlphaComponent(0.16)
-        dropBadgeLabel.layer.cornerRadius = 10.0
+        dropBadgeLabel.layer.cornerRadius = 11.0
         dropBadgeLabel.clipsToBounds = true
         dropBadgeLabel.isHidden = true
         dropBadgeLabel.setContentHuggingPriority(.required, for: .horizontal)
+        dropBadgeLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 22.0).isActive = true
 
         doneEditingButton.setTitle("Done", for: .normal)
         doneEditingButton.titleLabel?.font = .systemFont(ofSize: 13.0, weight: .semibold)
@@ -194,6 +195,7 @@ final class MainViewController: UIViewController, UITextViewDelegate {
 
         let spacer = UIView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let headerRow = UIStackView(arrangedSubviews: [headerLeft, dropBadgeLabel, spacer, doneEditingButton, clearButton])
         headerRow.axis = .horizontal
@@ -231,11 +233,12 @@ final class MainViewController: UIViewController, UITextViewDelegate {
             testerTextView.bottomAnchor.constraint(equalTo: editorWrapper.bottomAnchor),
 
             testerPlaceholderLabel.topAnchor.constraint(equalTo: testerTextView.topAnchor, constant: 12.0),
-            testerPlaceholderLabel.leadingAnchor.constraint(equalTo: testerTextView.leadingAnchor, constant: 15.0)
+            testerPlaceholderLabel.leadingAnchor.constraint(equalTo: testerTextView.leadingAnchor, constant: 15.0),
+            testerPlaceholderLabel.trailingAnchor.constraint(lessThanOrEqualTo: testerTextView.trailingAnchor, constant: -15.0)
         ])
 
         let hintLabel = UILabel()
-        hintLabel.text = "Tap inside above, switch to AutoDrop Keyboard via Globe, and tap the toolbar gear icon to customize all modes, delays, height, font & haptics."
+        hintLabel.text = "Tap inside above, switch to AutoDrop via Globe, and tap the toolbar gear icon to customize all modes, delays, height, font & haptics."
         hintLabel.font = .systemFont(ofSize: 12.0, weight: .medium)
         hintLabel.textColor = secondaryTextColor
         hintLabel.numberOfLines = 0
@@ -369,7 +372,8 @@ final class MainViewController: UIViewController, UITextViewDelegate {
         testerPlaceholderLabel.isHidden = !text.isEmpty
         let drops = text.filter { $0 == "\n" }.count
         dropBadgeLabel.isHidden = (drops == 0)
-        dropBadgeLabel.text = "  \(drops) drops  "
+        let noun = (drops == 1) ? "drop" : "drops"
+        dropBadgeLabel.text = "  \(drops) \(noun)  "
     }
 
     // MARK: - Keyboard Avoidance
@@ -395,13 +399,26 @@ final class MainViewController: UIViewController, UITextViewDelegate {
             return
         }
         let converted = view.convert(endFrame, from: nil)
-        let overlap = max(0.0, view.bounds.maxY - converted.minY)
-        scrollView.contentInset.bottom = overlap
-        scrollView.verticalScrollIndicatorInsets.bottom = overlap
+        let isDockedAtBottom = converted.maxY >= view.bounds.maxY - 1.0 && converted.width >= view.bounds.width * 0.8
+        let overlap = isDockedAtBottom ? max(0.0, view.bounds.maxY - converted.minY) : 0.0
+        let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval) ?? 0.25
+
+        UIView.animate(withDuration: duration) {
+            self.scrollView.contentInset.bottom = overlap
+            self.scrollView.verticalScrollIndicatorInsets.bottom = overlap
+        }
+
+        if testerTextView.isFirstResponder && overlap > 0 {
+            let targetRect = testerTextView.convert(testerTextView.bounds, to: scrollView)
+            scrollView.scrollRectToVisible(targetRect.insetBy(dx: 0, dy: -12), animated: true)
+        }
     }
 
     @objc private func handleKeyboardWillHide(_ notification: Notification) {
-        scrollView.contentInset.bottom = 0.0
-        scrollView.verticalScrollIndicatorInsets.bottom = 0.0
+        let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval) ?? 0.25
+        UIView.animate(withDuration: duration) {
+            self.scrollView.contentInset.bottom = 0.0
+            self.scrollView.verticalScrollIndicatorInsets.bottom = 0.0
+        }
     }
 }

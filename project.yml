@@ -2,6 +2,7 @@ name: AutoDropKeyboard
 
 options:
   bundleIdPrefix: com.autodrop
+  developmentLanguage: en
   deploymentTarget:
     iOS: "15.0"
   createIntermediateGroups: true
@@ -12,9 +13,12 @@ settings:
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
     TARGETED_DEVICE_FAMILY: "1,2"
-    MARKETING_VERSION: "1.0.0"
+    MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_LANGUAGE: en
     ENABLE_BITCODE: NO
+    ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: NO
+    GENERATE_INFOPLIST_FILE: NO
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
 
@@ -32,11 +36,16 @@ targets:
       - target: AutoDropKeyboardExt
         embed: true
         link: false
+        codeSign: false
     settings:
       base:
         PRODUCT_NAME: AutoDropHost
+        PRODUCT_MODULE_NAME: AutoDropHost
         PRODUCT_BUNDLE_IDENTIFIER: com.autodrop.keyboard
+        PRODUCT_BUNDLE_PACKAGE_TYPE: APPL
         INFOPLIST_FILE: AutoDropHost/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
@@ -54,14 +63,20 @@ targets:
     settings:
       base:
         PRODUCT_NAME: AutoDropKeyboardExt
+        PRODUCT_MODULE_NAME: AutoDropKeyboardExt
         PRODUCT_BUNDLE_IDENTIFIER: com.autodrop.keyboard.ext
+        PRODUCT_BUNDLE_PACKAGE_TYPE: "XPC!"
         INFOPLIST_FILE: AutoDropKeyboardExt/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: NO
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        DEAD_CODE_STRIPPING: NO
+        STRIP_SWIFT_SYMBOLS: NO
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/Frameworks"
           - "@executable_path/../../Frameworks"
-        SKIP_INSTALL: YES
-        APPLICATION_EXTENSION_API_ONLY: YES
 
 schemes:
   AutoDropHost:

@@ -27,14 +27,16 @@ final class KeyboardToolbarView: UIView {
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        return nil
     }
 
     private func setupUI() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = AutoDropTheme.toolbarBackground
 
-        heightAnchor.constraint(equalToConstant: 42.0).isActive = true
+        let toolbarHeight = heightAnchor.constraint(equalToConstant: 42.0)
+        toolbarHeight.priority = UILayoutPriority(998)
+        toolbarHeight.isActive = true
 
         let modesStack = UIStackView()
         modesStack.axis = .horizontal
@@ -54,7 +56,7 @@ final class KeyboardToolbarView: UIView {
             button.layer.cornerCurve = .continuous
             button.tag = AutoDropMode.allCases.firstIndex(of: mode) ?? 0
             button.setContentHuggingPriority(.required, for: .horizontal)
-            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(UILayoutPriority(998), for: .horizontal)
             button.addTarget(self, action: #selector(handleModeTapped(_:)), for: .touchUpInside)
             modeButtons[mode] = button
             modesStack.addArrangedSubview(button)
@@ -69,9 +71,11 @@ final class KeyboardToolbarView: UIView {
         delayChipButton.layer.borderWidth = 1.0
         delayChipButton.layer.borderColor = UIColor(hex: 0x343434).cgColor
         delayChipButton.setContentHuggingPriority(.required, for: .horizontal)
-        delayChipButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        delayChipButton.setContentCompressionResistancePriority(UILayoutPriority(998), for: .horizontal)
         delayChipButton.addTarget(self, action: #selector(handleDelayTapped), for: .touchUpInside)
-        delayChipButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 42.0).isActive = true
+        let delayMinWidth = delayChipButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 42.0)
+        delayMinWidth.priority = UILayoutPriority(998)
+        delayMinWidth.isActive = true
 
         resizeButton.translatesAutoresizingMaskIntoConstraints = false
         resizeButton.backgroundColor = AutoDropTheme.pillInactive
@@ -81,10 +85,11 @@ final class KeyboardToolbarView: UIView {
         let iconConfig = UIImage.SymbolConfiguration(pointSize: 13.5, weight: .semibold)
         resizeButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: iconConfig), for: .normal)
         resizeButton.addTarget(self, action: #selector(handleResizeTapped), for: .touchUpInside)
-        NSLayoutConstraint.activate([
-            resizeButton.widthAnchor.constraint(equalToConstant: 32.0),
-            resizeButton.heightAnchor.constraint(equalToConstant: 28.0)
-        ])
+        let resizeWidth = resizeButton.widthAnchor.constraint(equalToConstant: 32.0)
+        resizeWidth.priority = UILayoutPriority(998)
+        let resizeHeight = resizeButton.heightAnchor.constraint(equalToConstant: 28.0)
+        resizeHeight.priority = UILayoutPriority(998)
+        NSLayoutConstraint.activate([resizeWidth, resizeHeight])
 
         let spacer = UIView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
@@ -110,9 +115,10 @@ final class KeyboardToolbarView: UIView {
         addSubview(mainStack)
         addSubview(bottomHairline)
 
+        let safeGuide = safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6.0),
-            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6.0),
+            mainStack.leadingAnchor.constraint(equalTo: safeGuide.leadingAnchor, constant: 6.0),
+            mainStack.trailingAnchor.constraint(equalTo: safeGuide.trailingAnchor, constant: -6.0),
             mainStack.topAnchor.constraint(equalTo: topAnchor),
             mainStack.bottomAnchor.constraint(equalTo: bottomAnchor),
 
@@ -161,7 +167,8 @@ final class KeyboardToolbarView: UIView {
     }
 
     func flashActiveModePill() {
-        guard let pill = modeButtons[activeMode] else { return }
+        let flashedMode = activeMode
+        guard let pill = modeButtons[flashedMode] else { return }
         pill.layer.removeAllAnimations()
         pill.layer.shadowColor = AutoDropTheme.accent.cgColor
         pill.layer.shadowOffset = .zero
@@ -169,7 +176,6 @@ final class KeyboardToolbarView: UIView {
         pill.layer.shadowOpacity = 0.95
         pill.layer.masksToBounds = false
 
-        let restColor = AutoDropTheme.accent
         UIView.animate(
             withDuration: 0.075,
             delay: 0,
@@ -177,13 +183,14 @@ final class KeyboardToolbarView: UIView {
         ) {
             pill.backgroundColor = AutoDropTheme.accentFlash
             pill.transform = CGAffineTransform(scaleX: 1.12, y: 1.12)
-        } completion: { _ in
+        } completion: { [weak self] _ in
             UIView.animate(
                 withDuration: 0.075,
                 delay: 0,
                 options: [.allowUserInteraction, .beginFromCurrentState]
             ) {
-                pill.backgroundColor = restColor
+                let isStillActive = (self?.activeMode == flashedMode)
+                pill.backgroundColor = isStillActive ? AutoDropTheme.accent : AutoDropTheme.pillInactive
                 pill.transform = .identity
                 pill.layer.shadowOpacity = 0.0
             }
