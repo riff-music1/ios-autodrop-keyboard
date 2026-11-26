@@ -27,7 +27,6 @@ targets:
       - path: AutoDropHost
         excludes:
           - "Info.plist"
-          - "*.entitlements"
       - path: Shared
     dependencies:
       - target: AutoDropKeyboardExt
@@ -38,7 +37,6 @@ targets:
         PRODUCT_NAME: AutoDropHost
         PRODUCT_BUNDLE_IDENTIFIER: com.autodrop.keyboard
         INFOPLIST_FILE: AutoDropHost/Info.plist
-        CODE_SIGN_ENTITLEMENTS: AutoDropHost/AutoDropHost.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
@@ -52,14 +50,12 @@ targets:
       - path: AutoDropKeyboardExt
         excludes:
           - "Info.plist"
-          - "*.entitlements"
       - path: Shared
     settings:
       base:
         PRODUCT_NAME: AutoDropKeyboardExt
         PRODUCT_BUNDLE_IDENTIFIER: com.autodrop.keyboard.ext
         INFOPLIST_FILE: AutoDropKeyboardExt/Info.plist
-        CODE_SIGN_ENTITLEMENTS: AutoDropKeyboardExt/AutoDropKeyboardExt.entitlements
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/Frameworks"

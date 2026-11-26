@@ -1,13 +1,13 @@
 # AutoDrop Keyboard (iOS 15.0+)
 
-Native iOS Custom Keyboard (`UIInputViewController`) and SwiftUI Host App featuring a dark `#151515` / `#FF599E` theme, live inline height/font/gap resizer, and a smart Auto-Drop engine (`OFF`, `ABC`, `123` Fast Numpad, `WORD`).
+Native iOS Custom Keyboard (`UIInputViewController`) and pure UIKit Host App featuring a dark `#151515` / `#FF599E` theme, inline Settings & Live Resizer panel inside the keyboard, and a smart Auto-Drop engine (`OFF`, `ABC`, `123` Fast Numpad, `WORD`).
 
 ## Project Structure
 
-- `project.yml`: XcodeGen specification generating `AutoDropKeyboard.xcodeproj`
-- `Shared/AutoDropSettings.swift`: Shared App Group (`group.com.autodrop.keyboard`) defaults and cross-process Darwin notification sync
-- `AutoDropHost/`: SwiftUI Host App (`com.autodrop.keyboard`) with Setup Guide, Live Tester, Auto-Drop Settings, and Haptics toggle
-- `AutoDropKeyboardExt/`: UIKit Keyboard Extension (`com.autodrop.keyboard.ext`, `com.apple.keyboard-service`)
+- `project.yml`: XcodeGen specification generating `AutoDropKeyboard.xcodeproj` (zero entitlements for clean KSign/ESign sideloading)
+- `Shared/AutoDropSettings.swift`: Settings model and `UserDefaults.standard` persistence
+- `AutoDropHost/`: Pure UIKit Host App (`AppDelegate` + `MainViewController`, `com.autodrop.keyboard`) with Setup Guide and Live Tester
+- `AutoDropKeyboardExt/`: UIKit Keyboard Extension (`com.autodrop.keyboard.ext`, `com.apple.keyboard-service`) with all Auto-Drop, delay, trigger, height, font, gap, and haptics controls built directly into the toolbar Gear overlay
 - `.github/workflows/build-ipa.yml`: GitHub Actions macOS workflow building an unsigned `AutoDropKeyboard.ipa`
 
 ## Building Locally (macOS)

@@ -1,5 +1,4 @@
 import Foundation
-import CoreFoundation
 
 public enum AutoDropMode: String, CaseIterable, Codable {
     case off = "off"
@@ -69,7 +68,7 @@ public struct AutoDropSettingsSnapshot: Equatable {
     public var numberDelaySeconds: Double
     public var wordDelaySeconds: Double
     public var wordTrigger: WordTriggerMode
-    public var keyboardHeightScale: Double
+    public var keyboardHeightPt: Double
     public var keyFontSize: Double
     public var keyGapMode: KeyGapMode
     public var hapticsEnabled: Bool
@@ -79,7 +78,7 @@ public struct AutoDropSettingsSnapshot: Equatable {
         numberDelaySeconds: 0.5,
         wordDelaySeconds: 0.6,
         wordTrigger: .onPause,
-        keyboardHeightScale: 1.0,
+        keyboardHeightPt: 260.0,
         keyFontSize: 19.0,
         keyGapMode: .comfortable,
         hapticsEnabled: true
@@ -87,12 +86,9 @@ public struct AutoDropSettingsSnapshot: Equatable {
 }
 
 public enum AutoDropConfig {
-    public static let appGroupID = "group.com.autodrop.keyboard"
-    public static let darwinNotificationName = "com.autodrop.keyboard.settingsChanged"
-
     public static let numberDelayRange: ClosedRange<Double> = 0.2...1.5
     public static let wordDelayRange: ClosedRange<Double> = 0.3...2.0
-    public static let heightScaleRange: ClosedRange<Double> = 0.65...1.35
+    public static let heightPtRange: ClosedRange<Double> = 180.0...340.0
     public static let fontSizeRange: ClosedRange<Double> = 14.0...24.0
 
     public static let delayPresets: [Double] = [0.2, 0.35, 0.5, 0.7, 1.0, 1.5]
@@ -103,62 +99,58 @@ public enum AutoDropConfig {
         static let numberDelay = "autodrop.numberDelaySeconds"
         static let wordDelay = "autodrop.wordDelaySeconds"
         static let wordTrigger = "autodrop.wordTrigger"
-        static let heightScale = "autodrop.keyboardHeightScale"
+        static let heightPt = "autodrop.keyboardHeightPt"
         static let keyFontSize = "autodrop.keyFontSize"
         static let keyGapMode = "autodrop.keyGapMode"
         static let hapticsEnabled = "autodrop.hapticsEnabled"
     }
 
-    public static var sharedDefaults: UserDefaults {
-        UserDefaults(suiteName: appGroupID) ?? .standard
-    }
-
     public static func load() -> AutoDropSettingsSnapshot {
-        let defaults = sharedDefaults
-        let defaultsSnapshot = AutoDropSettingsSnapshot.defaultValue
+        let defaults = UserDefaults.standard
+        let fallback = AutoDropSettingsSnapshot.defaultValue
 
         let mode = (defaults.string(forKey: Keys.mode).flatMap(AutoDropMode.init(rawValue:)))
-            ?? defaultsSnapshot.mode
+            ?? fallback.mode
 
         let numberDelay: Double
         if defaults.object(forKey: Keys.numberDelay) != nil {
             numberDelay = clamp(defaults.double(forKey: Keys.numberDelay), to: numberDelayRange)
         } else {
-            numberDelay = defaultsSnapshot.numberDelaySeconds
+            numberDelay = fallback.numberDelaySeconds
         }
 
         let wordDelay: Double
         if defaults.object(forKey: Keys.wordDelay) != nil {
             wordDelay = clamp(defaults.double(forKey: Keys.wordDelay), to: wordDelayRange)
         } else {
-            wordDelay = defaultsSnapshot.wordDelaySeconds
+            wordDelay = fallback.wordDelaySeconds
         }
 
         let wordTrigger = (defaults.string(forKey: Keys.wordTrigger).flatMap(WordTriggerMode.init(rawValue:)))
-            ?? defaultsSnapshot.wordTrigger
+            ?? fallback.wordTrigger
 
-        let heightScale: Double
-        if defaults.object(forKey: Keys.heightScale) != nil {
-            heightScale = clamp(defaults.double(forKey: Keys.heightScale), to: heightScaleRange)
+        let heightPt: Double
+        if defaults.object(forKey: Keys.heightPt) != nil {
+            heightPt = clamp(defaults.double(forKey: Keys.heightPt), to: heightPtRange)
         } else {
-            heightScale = defaultsSnapshot.keyboardHeightScale
+            heightPt = fallback.keyboardHeightPt
         }
 
         let fontSize: Double
         if defaults.object(forKey: Keys.keyFontSize) != nil {
             fontSize = clamp(defaults.double(forKey: Keys.keyFontSize), to: fontSizeRange)
         } else {
-            fontSize = defaultsSnapshot.keyFontSize
+            fontSize = fallback.keyFontSize
         }
 
         let keyGapMode = (defaults.string(forKey: Keys.keyGapMode).flatMap(KeyGapMode.init(rawValue:)))
-            ?? defaultsSnapshot.keyGapMode
+            ?? fallback.keyGapMode
 
         let hapticsEnabled: Bool
         if defaults.object(forKey: Keys.hapticsEnabled) != nil {
             hapticsEnabled = defaults.bool(forKey: Keys.hapticsEnabled)
         } else {
-            hapticsEnabled = defaultsSnapshot.hapticsEnabled
+            hapticsEnabled = fallback.hapticsEnabled
         }
 
         return AutoDropSettingsSnapshot(
@@ -166,27 +158,23 @@ public enum AutoDropConfig {
             numberDelaySeconds: numberDelay,
             wordDelaySeconds: wordDelay,
             wordTrigger: wordTrigger,
-            keyboardHeightScale: heightScale,
+            keyboardHeightPt: heightPt,
             keyFontSize: fontSize,
             keyGapMode: keyGapMode,
             hapticsEnabled: hapticsEnabled
         )
     }
 
-    public static func save(_ snapshot: AutoDropSettingsSnapshot, notify: Bool = true) {
-        let defaults = sharedDefaults
+    public static func save(_ snapshot: AutoDropSettingsSnapshot) {
+        let defaults = UserDefaults.standard
         defaults.set(snapshot.mode.rawValue, forKey: Keys.mode)
         defaults.set(clamp(snapshot.numberDelaySeconds, to: numberDelayRange), forKey: Keys.numberDelay)
         defaults.set(clamp(snapshot.wordDelaySeconds, to: wordDelayRange), forKey: Keys.wordDelay)
         defaults.set(snapshot.wordTrigger.rawValue, forKey: Keys.wordTrigger)
-        defaults.set(clamp(snapshot.keyboardHeightScale, to: heightScaleRange), forKey: Keys.heightScale)
+        defaults.set(clamp(snapshot.keyboardHeightPt, to: heightPtRange), forKey: Keys.heightPt)
         defaults.set(clamp(snapshot.keyFontSize, to: fontSizeRange), forKey: Keys.keyFontSize)
         defaults.set(snapshot.keyGapMode.rawValue, forKey: Keys.keyGapMode)
         defaults.set(snapshot.hapticsEnabled, forKey: Keys.hapticsEnabled)
-
-        if notify {
-            AutoDropDarwinSync.postChanged()
-        }
     }
 
     public static func formatDelayChip(_ seconds: Double) -> String {
@@ -207,42 +195,5 @@ public enum AutoDropConfig {
 
     public static func clamp(_ value: Double, to range: ClosedRange<Double>) -> Double {
         min(max(value, range.lowerBound), range.upperBound)
-    }
-}
-
-public extension Notification.Name {
-    static let autoDropSettingsDidChange = Notification.Name("com.autodrop.keyboard.localSettingsChanged")
-}
-
-private let darwinSettingsCallback: CFNotificationCallback = { _, _, _, _, _ in
-    DispatchQueue.main.async {
-        NotificationCenter.default.post(name: .autoDropSettingsDidChange, object: nil)
-    }
-}
-
-public enum AutoDropDarwinSync {
-    private static var isObserving = false
-
-    public static func startObserving() {
-        guard !isObserving else { return }
-        isObserving = true
-        CFNotificationCenterAddObserver(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            nil,
-            darwinSettingsCallback,
-            AutoDropConfig.darwinNotificationName as CFString,
-            nil,
-            .deliverImmediately
-        )
-    }
-
-    public static func postChanged() {
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            CFNotificationName(AutoDropConfig.darwinNotificationName as CFString),
-            nil,
-            nil,
-            true
-        )
     }
 }

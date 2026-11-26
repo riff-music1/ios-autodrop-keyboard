@@ -19,26 +19,13 @@ final class KeyboardViewController: UIInputViewController {
     private var toolbarView: KeyboardToolbarView!
     private var layoutContainer: KeyboardLayoutContainer!
     private var resizerOverlay: InlineResizerOverlay!
-    private var settingsObserver: NSObjectProtocol?
 
     deinit {
         cancelAllTimers()
-        if let observer = settingsObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        AutoDropDarwinSync.startObserving()
-        settingsObserver = NotificationCenter.default.addObserver(
-            forName: .autoDropSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.reloadSettingsFromDisk()
-        }
 
         view.backgroundColor = AutoDropTheme.background
         if let keyboardInputView = inputView {
@@ -108,17 +95,40 @@ final class KeyboardViewController: UIInputViewController {
         resizerOverlay = InlineResizerOverlay()
         resizerOverlay.isHidden = true
         resizerOverlay.alpha = 0.0
-        resizerOverlay.onHeightScaleChanged = { [weak self] scale, shouldNotify in
-            guard let self = self else { return }
-            self.settings.keyboardHeightScale = AutoDropConfig.clamp(scale, to: AutoDropConfig.heightScaleRange)
-            self.updateKeyboardHeight()
-            AutoDropConfig.save(self.settings, notify: shouldNotify)
+        resizerOverlay.onModeChanged = { [weak self] mode in
+            self?.selectMode(mode)
         }
-        resizerOverlay.onFontSizeChanged = { [weak self] fontSize, shouldNotify in
+        resizerOverlay.onNumberDelayChanged = { [weak self] seconds in
+            guard let self = self else { return }
+            self.settings.numberDelaySeconds = AutoDropConfig.clamp(seconds, to: AutoDropConfig.numberDelayRange)
+            AutoDropConfig.save(self.settings)
+            self.toolbarView.update(with: self.settings, isResizerOpen: self.isResizerOpen)
+        }
+        resizerOverlay.onWordDelayChanged = { [weak self] seconds in
+            guard let self = self else { return }
+            self.settings.wordDelaySeconds = AutoDropConfig.clamp(seconds, to: AutoDropConfig.wordDelayRange)
+            AutoDropConfig.save(self.settings)
+            self.toolbarView.update(with: self.settings, isResizerOpen: self.isResizerOpen)
+        }
+        resizerOverlay.onWordTriggerChanged = { [weak self] trigger in
+            guard let self = self else { return }
+            self.playHaptic(.light)
+            self.settings.wordTrigger = trigger
+            AutoDropConfig.save(self.settings)
+            self.resizerOverlay.update(with: self.settings)
+            self.toolbarView.update(with: self.settings, isResizerOpen: self.isResizerOpen)
+        }
+        resizerOverlay.onHeightPtChanged = { [weak self] heightPt in
+            guard let self = self else { return }
+            self.settings.keyboardHeightPt = AutoDropConfig.clamp(heightPt, to: AutoDropConfig.heightPtRange)
+            self.updateKeyboardHeight()
+            AutoDropConfig.save(self.settings)
+        }
+        resizerOverlay.onFontSizeChanged = { [weak self] fontSize in
             guard let self = self else { return }
             self.settings.keyFontSize = AutoDropConfig.clamp(fontSize, to: AutoDropConfig.fontSizeRange)
             self.layoutContainer.updateFontSize(CGFloat(self.settings.keyFontSize), shiftState: self.shiftState)
-            AutoDropConfig.save(self.settings, notify: shouldNotify)
+            AutoDropConfig.save(self.settings)
         }
         resizerOverlay.onGapModeChanged = { [weak self] gapMode in
             guard let self = self else { return }
@@ -126,10 +136,18 @@ final class KeyboardViewController: UIInputViewController {
             self.settings.keyGapMode = gapMode
             self.layoutContainer.updateGap(CGFloat(gapMode.spacing))
             self.resizerOverlay.update(with: self.settings)
-            AutoDropConfig.save(self.settings, notify: true)
+            AutoDropConfig.save(self.settings)
+        }
+        resizerOverlay.onHapticsChanged = { [weak self] enabled in
+            guard let self = self else { return }
+            self.settings.hapticsEnabled = enabled
+            AutoDropConfig.save(self.settings)
+            if enabled {
+                self.playHaptic(.light)
+            }
         }
         resizerOverlay.onReset = { [weak self] in
-            self?.resetResizeSettings()
+            self?.resetAllSettings()
         }
         resizerOverlay.onDone = { [weak self] in
             self?.setResizerOverlayVisible(false)
@@ -169,10 +187,13 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func targetKeyboardHeight() -> CGFloat {
-        let isLandscape = isLandscapeOrientation()
-        let baseHeight: CGFloat = isLandscape ? 180.0 : 264.0
-        let scaled = (baseHeight * CGFloat(settings.keyboardHeightScale)).rounded()
-        return max(116.0, scaled)
+        let portraitPt = CGFloat(AutoDropConfig.clamp(settings.keyboardHeightPt, to: AutoDropConfig.heightPtRange))
+        if isLandscapeOrientation() {
+            let screenHeight = UIScreen.main.bounds.height
+            let scaled = (portraitPt * 0.68).rounded()
+            return min(max(120.0, scaled), max(160.0, screenHeight * 0.56))
+        }
+        return portraitPt.rounded()
     }
 
     private func isLandscapeOrientation() -> Bool {
@@ -249,7 +270,7 @@ final class KeyboardViewController: UIInputViewController {
         hasPendingWordChars = false
 
         settings.mode = mode
-        AutoDropConfig.save(settings, notify: true)
+        AutoDropConfig.save(settings)
 
         switch mode {
         case .number123:
@@ -259,6 +280,7 @@ final class KeyboardViewController: UIInputViewController {
         }
 
         toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
+        resizerOverlay.update(with: settings)
     }
 
     private func cycleDelayPreset() {
@@ -281,8 +303,9 @@ final class KeyboardViewController: UIInputViewController {
                 settings.wordDelaySeconds = next
             }
         }
-        AutoDropConfig.save(settings, notify: true)
+        AutoDropConfig.save(settings)
         toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
+        resizerOverlay.update(with: settings)
     }
 
     private func toggleResizerOverlay() {
@@ -315,14 +338,20 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func resetResizeSettings() {
-        playHaptic(.medium)
+    private func resetAllSettings() {
         let defaults = AutoDropSettingsSnapshot.defaultValue
-        settings.keyboardHeightScale = defaults.keyboardHeightScale
+        settings.numberDelaySeconds = defaults.numberDelaySeconds
+        settings.wordDelaySeconds = defaults.wordDelaySeconds
+        settings.wordTrigger = defaults.wordTrigger
+        settings.keyboardHeightPt = defaults.keyboardHeightPt
         settings.keyFontSize = defaults.keyFontSize
         settings.keyGapMode = defaults.keyGapMode
+        settings.hapticsEnabled = defaults.hapticsEnabled
 
-        AutoDropConfig.save(settings, notify: true)
+        AutoDropConfig.save(settings)
+        playHaptic(.medium)
+
+        toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
         resizerOverlay.update(with: settings)
         layoutContainer.updateFontSize(CGFloat(settings.keyFontSize), shiftState: shiftState)
         layoutContainer.updateGap(CGFloat(settings.keyGapMode.spacing))
@@ -448,8 +477,9 @@ final class KeyboardViewController: UIInputViewController {
             cancelDebounceTimer()
             hasPendingWordChars = false
             settings.mode = .off
-            AutoDropConfig.save(settings, notify: true)
+            AutoDropConfig.save(settings)
             toolbarView.update(with: settings, isResizerOpen: isResizerOpen)
+            resizerOverlay.update(with: settings)
         }
         layoutContainer.showPage(.qwerty)
     }

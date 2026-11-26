@@ -78,8 +78,8 @@ final class KeyboardToolbarView: UIView {
         resizeButton.tintColor = AutoDropTheme.primaryText
         resizeButton.layer.cornerRadius = 8.0
         resizeButton.layer.cornerCurve = .continuous
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 13.0, weight: .semibold)
-        resizeButton.setImage(UIImage(systemName: "slider.horizontal.3", withConfiguration: iconConfig), for: .normal)
+        let iconConfig = UIImage.SymbolConfiguration(pointSize: 13.5, weight: .semibold)
+        resizeButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: iconConfig), for: .normal)
         resizeButton.addTarget(self, action: #selector(handleResizeTapped), for: .touchUpInside)
         NSLayoutConstraint.activate([
             resizeButton.widthAnchor.constraint(equalToConstant: 32.0),
